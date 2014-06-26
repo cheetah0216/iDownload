@@ -2,37 +2,16 @@
 #include <muduo/net/EventLoop.h>
 #include <muduo/net/TcpServer.h>
 #include <boost/shared_ptr.hpp>
+#include <stdio.h>
 
 using namespace muduo;
 using namespace muduo::net;
 
-const int buffSize = 64*1024; //64kb
+const int kBufSize = 64*1024;
 const char* g_file = NULL;
 typedef boost::shared_ptr<FILE> FilePtr;
 
-class FileServer {
-  public:
-    FileServer(EventLoop* loop,
-        const InetAddress& listenAddr)
-      :loop_(loop),
-      server_(loop, listenAddr, "FileServer")
-    {
-      server_.setConnectionCallback(onConnection);
-      server_.setWriteCompleteCallback(onWriteComplete);
-    }
-
-    void Start() { server_.start(); } 
-
-  private:
-    void onConnection(const TcpConnectionPtr& conn);
-    void onWriteComplete(const TcpConnectionPtr& conn);
-
-  private:
-    EventLoop* loop_;
-    TcpServer server_;
-};
-
-void FileServer::onConnection(const TcpConnectionPtr& conn)
+void onConnection(const TcpConnectionPtr& conn)
 {
   LOG_INFO << "FileServer - " << conn->peerAddress().toIpPort() << " -> "
            << conn->localAddress().toIpPort() << " is "
@@ -41,6 +20,7 @@ void FileServer::onConnection(const TcpConnectionPtr& conn)
   {
     LOG_INFO << "FileServer - Sending file " << g_file
              << " to " << conn->peerAddress().toIpPort();
+
     FILE* fp = ::fopen(g_file, "rb");
     if (fp)
     {
@@ -58,7 +38,7 @@ void FileServer::onConnection(const TcpConnectionPtr& conn)
   }
 }
 
-void FileServer::onWriteComplete(const TcpConnectionPtr& conn)
+void onWriteComplete(const TcpConnectionPtr& conn)
 {
   const FilePtr& fp = boost::any_cast<const FilePtr&>(conn->getContext());
   char buf[kBufSize];
@@ -83,8 +63,10 @@ int main(int argc, char* argv[])
 
     EventLoop loop;
     InetAddress listenAddr(2021);
-    FileServer server(&loop, listenAddr);
-    server.Start();
+    TcpServer server(&loop, listenAddr, "FileServer");
+    server.setConnectionCallback(onConnection);
+    server.setWriteCompleteCallback(onWriteComplete);
+    server.start();
     loop.loop();
   }
   else
@@ -92,3 +74,5 @@ int main(int argc, char* argv[])
     fprintf(stderr, "Usage: %s file_for_downloading\n", argv[0]);
   }
 }
+
+
