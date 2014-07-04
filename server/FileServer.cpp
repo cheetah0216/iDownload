@@ -1,78 +1,44 @@
-#include <muduo/base/Logging.h>
-#include <muduo/net/EventLoop.h>
-#include <muduo/net/TcpServer.h>
-#include <boost/shared_ptr.hpp>
-#include <stdio.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <unistd.h>
+#include <string>
+#include <iostream>
 
-using namespace muduo;
-using namespace muduo::net;
+#include "FileServer.h"
 
-const int kBufSize = 64*1024;
-const char* g_file = NULL;
-typedef boost::shared_ptr<FILE> FilePtr;
-
-void onConnection(const TcpConnectionPtr& conn)
+FileServer::~FileServer()
 {
-  LOG_INFO << "FileServer - " << conn->peerAddress().toIpPort() << " -> "
-           << conn->localAddress().toIpPort() << " is "
-           << (conn->connected() ? "UP" : "DOWN");
-  if (conn->connected())
-  {
-    LOG_INFO << "FileServer - Sending file " << g_file
-             << " to " << conn->peerAddress().toIpPort();
 
-    FILE* fp = ::fopen(g_file, "rb");
-    if (fp)
-    {
-      FilePtr ctx(fp, ::fclose);
-      conn->setContext(ctx);
-      char buf[kBufSize];
-      size_t nread = ::fread(buf, 1, sizeof buf, fp);
-      conn->send(buf, static_cast<int>(nread));
-    }
-    else
-    {
-      conn->shutdown();
-      LOG_INFO << "FileServer - no such file";
-    }
-  }
 }
 
-void onWriteComplete(const TcpConnectionPtr& conn)
+int FileServer::Start()
 {
-  const FilePtr& fp = boost::any_cast<const FilePtr&>(conn->getContext());
-  char buf[kBufSize];
-  size_t nread = ::fread(buf, 1, sizeof buf, get_pointer(fp));
-  if (nread > 0)
+  struct sockaddr_in servaddr, cliaddr;
+  socklen_t len;
+  int listenfd, connfd; 
+  listenfd = socket(AF_INET, SOCK_STREAM, 0);
+  memset(&servaddr, 0, sizeof(struct sockaddr_in));
+  servaddr.sin_family = AF_INET;
+  servaddr.sin_addr.s_addr = htonl(INADDR_ANY);
+  servaddr.sin_port = htons(port);
+  
+  if( -1 == bind(listenfd, (struct sockaddr*)&servaddr, sizeof(servaddr)) )
   {
-    conn->send(buf, static_cast<int>(nread));
+    close(listenfd);
+    return -1;
   }
-  else
+ 
+  if( -1 == listen(listenfd, 500) )
   {
-    conn->shutdown();
-    LOG_INFO << "FileServer - done";
+    close(listenfd);
+    return -1;
+  }
+
+  for( ; ; )
+  {
+    len = sizeof(cliaddr);
+    connfd = accept(listenfd, (struct sockaddr*)&cliaddr, &len);
+    std::cout << "Accept!" << std::endl;
   }
 }
-
-int main(int argc, char* argv[])
-{
-  LOG_INFO << "pid = " << getpid();
-  if (argc > 1)
-  {
-    g_file = argv[1];
-
-    EventLoop loop;
-    InetAddress listenAddr(2021);
-    TcpServer server(&loop, listenAddr, "FileServer");
-    server.setConnectionCallback(onConnection);
-    server.setWriteCompleteCallback(onWriteComplete);
-    server.start();
-    loop.loop();
-  }
-  else
-  {
-    fprintf(stderr, "Usage: %s file_for_downloading\n", argv[0]);
-  }
-}
-
-

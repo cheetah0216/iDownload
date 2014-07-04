@@ -26,8 +26,7 @@ class Client:
 
 
 if __name__ == '__main__':
-    #client = Client('10.0.0.4',2021)
-    client = Client('127.0.0.1',2021)
+    #client = Client('10.0.0.4',2222)
+    client = Client('127.0.0.1',2222)
     client.connect()
-    client.recvFiles(sys.argv[1])
     client.close()
